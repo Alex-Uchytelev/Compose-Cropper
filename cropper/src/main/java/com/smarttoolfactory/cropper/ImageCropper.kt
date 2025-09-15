@@ -1,16 +1,15 @@
 package com.smarttoolfactory.cropper
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.scaleIn
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -38,7 +37,11 @@ import com.smarttoolfactory.cropper.state.DynamicCropState
 import com.smarttoolfactory.cropper.state.rememberCropState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 
 @Composable
 fun ImageCropper(
@@ -48,8 +51,9 @@ fun ImageCropper(
     cropStyle: CropStyle = CropDefaults.style(),
     cropProperties: CropProperties,
     filterQuality: FilterQuality = DrawScope.DefaultFilterQuality,
+    createCropRect: Boolean = false,
+    onCropRect: ((Rect) -> Unit)? = null,
     crop: Boolean = false,
-    backgroundColor: Color = Color.Black,
     onCropStart: () -> Unit,
     onCropSuccess: (ImageBitmap) -> Unit,
     onDrawGrid: (DrawScope.(rect: Rect, strokeWidth: Float, color: Color) -> Unit)? = null,
@@ -64,8 +68,7 @@ fun ImageCropper(
         drawImage = false
     ) {
 
-        // No crop operation is applied by ScalableImage so rect points to bounds of original
-        // bitmap
+
         val scaledImageBitmap = getScaledImageBitmap(
             imageWidth = imageWidth,
             imageHeight = imageHeight,
@@ -127,7 +130,7 @@ fun ImageCropper(
             }
         }
 
-        val pressedStateColor = remember(cropStyle.backgroundColor){
+        val pressedStateColor = remember(cropStyle.backgroundColor) {
             cropStyle.backgroundColor
                 .copy(cropStyle.backgroundColor.alpha * .7f)
         }
@@ -149,6 +152,12 @@ fun ImageCropper(
             cropState.rotation
         )
 
+        LaunchedEffect(createCropRect) {
+            if (createCropRect) {
+                onCropRect?.invoke(cropState.cropRect)
+            }
+        }
+
         val imageModifier = Modifier
             .size(containerWidth, containerHeight)
             .crop(
@@ -160,17 +169,8 @@ fun ImageCropper(
             cropState.updateProperties(cropProperties)
         }
 
-        /// Create a MutableTransitionState<Boolean> for the AnimatedVisibility.
-        var visible by remember { mutableStateOf(false) }
-
-        LaunchedEffect(Unit) {
-            delay(100)
-            visible = true
-        }
-
         ImageCropper(
             modifier = imageModifier,
-            visible = visible,
             imageBitmap = imageBitmap,
             containerWidth = containerWidth,
             containerHeight = containerHeight,
@@ -182,17 +182,14 @@ fun ImageCropper(
             cropOutline = cropOutline,
             cropStyle = cropStyle,
             transparentColor = transparentColor,
-            backgroundColor = backgroundColor,
             onDrawGrid = onDrawGrid,
         )
     }
 }
 
-@OptIn(ExperimentalAnimationApi::class)
 @Composable
 private fun ImageCropper(
     modifier: Modifier,
-    visible: Boolean,
     imageBitmap: ImageBitmap,
     containerWidth: Dp,
     containerHeight: Dp,
@@ -204,54 +201,23 @@ private fun ImageCropper(
     cropStyle: CropStyle,
     overlayRect: Rect,
     transparentColor: Color,
-    backgroundColor: Color,
     onDrawGrid: (DrawScope.(rect: Rect, strokeWidth: Float, color: Color) -> Unit)?,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(backgroundColor)
-    ) {
-
-        AnimatedVisibility(
-            visible = visible,
-            enter = scaleIn(tween(500))
-        ) {
-
-            ImageCropperImpl(
-                modifier = modifier,
-                imageBitmap = imageBitmap,
-                containerWidth = containerWidth,
-                containerHeight = containerHeight,
-                imageWidthPx = imageWidthPx,
-                imageHeightPx = imageHeightPx,
-                cropType = cropType,
-                cropOutline = cropOutline,
-                handleSize = handleSize,
-                cropStyle = cropStyle,
-                rectOverlay = overlayRect,
-                transparentColor = transparentColor,
-                onDrawGrid = onDrawGrid,
-            )
-        }
-
-        // TODO Remove this text when cropper is complete. This is for debugging
-//            val rectCrop = cropState.cropRect
-//            val drawAreaRect = cropState.drawAreaRect
-//            val pan = cropState.pan
-//            val zoom = cropState.zoom
-//            Text(
-//                modifier = Modifier.align(Alignment.TopStart),
-//                color = Color.White,
-//                fontSize = 10.sp,
-//                text = "imageWidthInPx: $imageWidthPx, imageHeightInPx: $imageHeightPx\n" +
-//                        "bitmapWidth: $bitmapWidth, bitmapHeight: $bitmapHeight\n" +
-//                        "zoom: $zoom, pan: $pan\n" +
-//                        "drawAreaRect: $drawAreaRect, size: ${drawAreaRect.size}\n" +
-//                        "overlayRect: ${cropState.overlayRect}, size: ${cropState.overlayRect.size}\n" +
-//                        "cropRect: $rectCrop, size: ${rectCrop.size}"
-//            )
-    }
+    ImageCropperImpl(
+        modifier = modifier,
+        imageBitmap = imageBitmap,
+        containerWidth = containerWidth,
+        containerHeight = containerHeight,
+        imageWidthPx = imageWidthPx,
+        imageHeightPx = imageHeightPx,
+        cropType = cropType,
+        cropOutline = cropOutline,
+        handleSize = handleSize,
+        cropStyle = cropStyle,
+        rectOverlay = overlayRect,
+        transparentColor = transparentColor,
+        onDrawGrid = onDrawGrid,
+    )
 }
 
 @Composable
